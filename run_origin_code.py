@@ -1,4 +1,4 @@
-from transformers import DebertaV2Tokenizer, DebertaV2ForMaskedLM
+from scripts import DebertaV2Tokenizer, DebertaV2ForMaskedLM
 import torch
 
 
