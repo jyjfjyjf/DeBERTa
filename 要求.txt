@@ -1,0 +1,11 @@
+论文名称： DeBERTa: Decoding-enhanced BERT with Disentangled Attention
+数据集： GLUE SQuAD v1.1 SQuAD v2.0
+验收标准： 1. 复现DeBERTa和DeBERTa-v2（参考论文和实现链接）
+2. 完成模型权重从pytorch到paddle的转换代码，转换10个预训练权重（“microsoft/deberta-base”, “microsoft/deberta-large”,
+“microsoft/deberta-xlarge”, “microsoft/deberta-base-mnli”, “microsoft/deberta-large-mnli”,
+“microsoft/deberta-xlarge-mnli”, “microsoft/deberta-v2-xlarge”, “microsoft/deberta-v2-xxlarge”，
+“microsoft/deberta-v2-xlarge-mnli”， “microsoft/deberta-v2-xxlarge-mnli”）
+3. "microsoft/deberta-large"模型指标：GLUE测试集上MNLI-m/mm=91.1/91.1（见论文Table 1），
+SQuAD v1.1验证集上F1/EM=95.5/90.1，SQuAD v2.0验证集F1/EM=90.7/88/0（见论文table 2）
+4. "microsoft/deberta-v2-xlarge"模型指标：GLUE测试集上MNLI-m/mm=91.7/91.6
+（见https://huggingface.co/microsoft/deberta-v2-xlarge）
