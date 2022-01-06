@@ -1,0 +1,33 @@
+scripts                           实现目录
+    step1                         验证步骤1
+    step2                         验证步骤2
+    step3                         验证步骤3
+    step4                         验证步骤4
+    step5                         验证步骤5
+    __init__.py
+    bert.py                       实现deberta中的Bert结构 embedding，encoder，intermediate，output，layer等层
+    cache_utils.py                缓存工具类，加载模型，应该没有问题
+    da_utils.py                   数据处理用距离
+    debera.py                     deberta总体结构实现，就是整合bert.py中的层，组合好deberta模型
+    deberta_config.py             DebertaConfig的实现
+    disentangled_attention.py     deberta注意力解耦，相对位置处理等操作实现
+    forward_paddle.npy            之前运行出来的paddle前向保存数据
+    logger_utils.py               日志工具类
+    modeling_deberta_v2.py        transformer整合好的deberta-v2原本想在这里面改，可是很多pytorch架构中的东西不知道怎么用paddle实现
+    modeling_tf_deberta_v2.py     transformer整合好的tf实现
+    my_datasets.py                实现的一个mnli的dataset
+    nnmodule.py                   模型的基类
+    ops.py                        实现deberta torch源码中的一些操作，激活函数，自定义的dropout以及softmax
+    pooling.py                    实现pooling层
+    reprod_logger.py              reprod—logger工具的学习
+    sequence_classification.py    句子分类层的实现
+    spm_tokenizer.py              实现处理spm的词表
+    test.py                       测试paddle实现deberta-v2的效果代码
+    test_torch.py                 测试torch源码的实现效果代码
+    torch2paddle.py               torch模型转换成paddle模型
+    xtqdm.py                      重新改了一下tqdm
+
+
+    目前代码复现好了 数据对齐损失对齐反向对齐损失对齐都没问题，前向的时候会因为pytorch模型参数是f16，paddle模型参数是f32产生0.000几的误差
+    最主要的问题是pytorch在训练整个数据集的过程中，在中途准确率会上到0.8几，但是到后面又会降
+    paddle模型训练直接就是往0.33靠拢
