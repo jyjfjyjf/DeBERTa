@@ -4,7 +4,7 @@ from tools.sift import hook_sift_layer, AdversarialLearner
 from spm_tokenizer import SPMTokenizer
 from collections.abc import Sequence
 from config import vocab_path, batch_size, max_length, model_dir, model_path, \
-    paddle_model_path, lr, adv_weight
+    paddle_model_path, lr, adv_weight, seed
 import paddlenlp
 import paddle
 from transformers import DebertaV2ForSequenceClassification as torch_DebertaV2ForSequenceClassification
@@ -14,7 +14,16 @@ from sequence_classification import SequenceClassificationModel
 from tqdm import tqdm
 import paddle.nn.functional as F
 from paddlenlp.transformers import LinearDecayWithWarmup
+import random
 
+
+def setup_paddle_seed(sps_seed):
+    paddle.seed(sps_seed)
+    np.random.seed(sps_seed)
+    random.seed(sps_seed)
+
+
+setup_paddle_seed(seed)
 
 def padding(indice, max_len, pad_idx=0):
     """
