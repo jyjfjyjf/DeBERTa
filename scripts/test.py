@@ -1,9 +1,10 @@
 import numpy as np
 from my_datasets import MNLIDatasetPD
+from scripts.sift import hook_sift_layer, AdversarialLearner
 from spm_tokenizer import SPMTokenizer
-import pdb
+from collections.abc import Sequence
 from config import vocab_path, batch_size, max_length, model_dir, model_path, \
-    paddle_model_path, lr
+    paddle_model_path, lr, adv_weight
 import paddlenlp
 import paddle
 from transformers import DebertaV2ForSequenceClassification as torch_DebertaV2ForSequenceClassification
@@ -133,22 +134,46 @@ global_step = 0
 for epoch in range(1, epochs + 1):
     correct = 0
     data_num = 0
+    batch_id = 0
     model.train()
-    for batch_id, data in tqdm(enumerate(train_loader, start=1), desc='train'):
+    adv_modules = hook_sift_layer(model,
+                                  hidden_size=model.config.hidden_size,
+                                  learning_rate=1e-4,
+                                  init_perturbation=1e-2)
+
+    adv = AdversarialLearner(model, adv_modules)
+    for data in tqdm(train_loader, desc=f'epoch {epoch} training'):
         input_ids = paddle.to_tensor(data[0])
         token_type_ids = paddle.to_tensor(data[1])
         attention_mask = paddle.to_tensor(data[2])
         position_ids = paddle.to_tensor(data[3])
         labels = paddle.to_tensor(data[4])
-        outputs = model(input_ids=input_ids,
-                        type_ids=token_type_ids,
-                        input_mask=attention_mask,
-                        labels=labels,
-                        position_ids=position_ids)
+
+        input_data = {'input_ids': input_ids,
+                      'token_type_ids': token_type_ids,
+                      'attention_mask': attention_mask,
+                      'labels': labels,
+                      'position_ids': position_ids}
+
+        outputs = model(**input_data)
+
+        if adv_weight > 0:
+            def pert_logits_fn(plf_model,
+                               **plf_input_data):
+                o = plf_model(**plf_input_data)
+                plf_logits = o['logits']
+                if isinstance(plf_logits, Sequence):
+                    plf_logits = plf_logits[-1]
+                return plf_logits
+
         logits = outputs['logits']
         loss = outputs['loss']
+        loss += adv.loss(logits, pert_logits_fn,
+                         loss_fn="symmetric-kl", **input_data) * adv_weight
+        loss = loss / (1 + adv_weight)
 
-        probs = F.softmax(logits, axis=1)
+
+        probs = F.softmax(logits, axis=-1)
         correct = metric.compute(probs, labels)
         metric.update(correct)
         acc = metric.accumulate()
@@ -171,23 +196,24 @@ for epoch in range(1, epochs + 1):
 
         optimizer.clear_grad()
 
-    model.eval()
-    for data in tqdm(dev_loader, desc='dev'):
-        input_ids = paddle.to_tensor(data[0])
-        token_type_ids = paddle.to_tensor(data[1])
-        attention_mask = paddle.to_tensor(data[2])
-        position_ids = paddle.to_tensor(data[3])
-        labels = paddle.to_tensor(data[4])
-        outputs = model(input_ids=input_ids,
-                        type_ids=token_type_ids,
-                        input_mask=attention_mask,
-                        position_ids=position_ids)
+    with paddle.no_grad():
+        model.eval()
+        for data in tqdm(dev_loader, desc=f'epoch {epoch} dev'):
+            input_ids = paddle.to_tensor(data[0])
+            token_type_ids = paddle.to_tensor(data[1])
+            attention_mask = paddle.to_tensor(data[2])
+            position_ids = paddle.to_tensor(data[3])
+            labels = paddle.to_tensor(data[4])
+            outputs = model(input_ids=input_ids,
+                            type_ids=token_type_ids,
+                            input_mask=attention_mask,
+                            position_ids=position_ids)
 
-        logits = outputs['logits']
+            logits = outputs['logits']
 
-        probs = F.softmax(logits, axis=1)
-        correct = metric.compute(probs, labels)
-        metric.update(correct)
-        acc = metric.accumulate()
+            probs = F.softmax(logits, axis=-1)
+            correct = metric.compute(probs, labels)
+            metric.update(correct)
+            acc = metric.accumulate()
 
         print('dev accuracy %d'.format(acc))

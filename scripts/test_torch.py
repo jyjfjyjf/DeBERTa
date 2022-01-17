@@ -1,13 +1,37 @@
+import os.path
+
 from my_datasets import MNLIDatasetPT
+from scripts.sift_torch import hook_sift_layer, AdversarialLearner
 from spm_tokenizer import SPMTokenizer
 from datasets import load_dataset, load_metric
-from config import vocab_path, batch_size, max_length, model_dir, model_path, lr
-from transformers import DebertaV2ForSequenceClassification, DebertaV2Config
+from config import vocab_path, batch_size, max_length, model_dir, model_path, \
+    lr, adv_weight, root_path, valid_batch_size, seed
+from transformers.models.deberta_v2 import DebertaV2ForSequenceClassification, \
+    DebertaV2Config, DebertaV2Tokenizer
 import torch
 import time
 from torch.utils.data import DataLoader
 from transformers import AdamW, get_linear_schedule_with_warmup
 import torch.nn.functional as F
+from collections.abc import Sequence
+from tqdm import tqdm
+import numpy as np
+import random
+
+
+def setup_torch_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.enabled = False
+    torch.backends.cudnn.benchmark = False
+    #torch.backends.cudnn.benchmark = True #for accelerating the running
+
+
+setup_torch_seed(seed)
 
 
 def padding(indice, max_len, pad_idx=0):
@@ -32,7 +56,7 @@ def mnli_collate_fn(batch):
     attention_mask_padded = padding(attention_mask, mcf_max_length)
 
     return input_ids_padded, token_type_ids_padded, attention_mask_padded, position_ids_padded, \
-        torch.tensor(labels)
+           torch.tensor(labels)
 
 
 tokenizer = SPMTokenizer(vocab_path)
@@ -45,16 +69,16 @@ train_dataset = MNLIDatasetPT(tokenizer, train_dataset, max_length)
 valid_dataset = MNLIDatasetPT(tokenizer, valid_dataset, max_length)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=mnli_collate_fn)
-valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True, collate_fn=mnli_collate_fn)
+valid_loader = DataLoader(valid_dataset, batch_size=valid_batch_size, shuffle=True, collate_fn=mnli_collate_fn)
 
 config = DebertaV2Config.from_pretrained(model_dir)
 config.output_attentions = False
 config.output_hidden_states = False
 config.num_labels = 3
 
-epochs = 3
+epochs = 1
 
-warmup_proportion = 0.1
+warmup_proportion = 0.01
 
 weight_decay = 0.01
 
@@ -72,31 +96,60 @@ scheduler = get_linear_schedule_with_warmup(
     num_training_steps=(1 - warmup_proportion) * num_training_steps
 )
 
-model.train()
 global_step = 0
 for epoch in range(1, epochs + 1):
+    model.train()
+    adv_modules = hook_sift_layer(model,
+                                  hidden_size=model.config.hidden_size,
+                                  learning_rate=1e-4,
+                                  init_perturbation=1e-2)
+
+    adv = AdversarialLearner(model, adv_modules)
     correct = 0
     data_num = 0
+    batch_id = 0
     model.train()
-    for batch_id, data in enumerate(train_loader, start=1):
+    pre_acc = 0
+    for data in tqdm(train_loader, desc=f'epoch {epoch} training'):
+        batch_id += 1
         input_ids = data[0].to('cuda')
         token_type_ids = data[1].to('cuda')
         attention_mask = data[2].to('cuda')
         position_ids = data[3].to('cuda')
         labels = data[4].to('cuda')
-        outputs = model(input_ids=input_ids,
-                        token_type_ids=token_type_ids,
-                        attention_mask=attention_mask,
-                        labels=labels,
-                        position_ids=position_ids)
+
+        input_data = {'input_ids': input_ids,
+                      'token_type_ids': token_type_ids,
+                      'attention_mask': attention_mask,
+                      'labels': labels,
+                      'position_ids': position_ids}
+
+        outputs = model(**input_data)
+
+        if adv_weight > 0:
+            def pert_logits_fn(plf_model,
+                               **plf_input_data):
+                o = plf_model(**plf_input_data)
+                plf_logits = o['logits']
+                if isinstance(plf_logits, Sequence):
+                    plf_logits = plf_logits[-1]
+                return plf_logits
 
         logits = outputs['logits']
         loss = outputs['loss']
+        loss += adv.loss(logits, pert_logits_fn,
+                         loss_fn="symmetric-kl", **input_data) * adv_weight
+        loss = loss / (1 + adv_weight)
 
-        probs = F.softmax(logits, dim=1)
-        correct += sum(probs.argmax(dim=1) == labels).item()
+        probs = F.softmax(logits, dim=-1)
+        correct += sum(probs.argmax(dim=-1) == labels).item()
         data_num += labels.shape[0]
         acc = correct / data_num
+
+        # if pre_acc != 0 and pre_acc - acc < 0.001:
+        #     break
+
+        pre_acc = acc
 
         global_step += 1
         if global_step % 100 == 0:
@@ -108,9 +161,12 @@ for epoch in range(1, epochs + 1):
         scheduler.step()
         optimizer.zero_grad()
 
+    # model.load_state_dict(torch.load(os.path.join(root_path, 'model\\pytorch_model.bin')))
     model.eval()
-    with torch.no_grad:
-        for batch_id, data in enumerate(valid_loader, start=1):
+    correct = 0
+    data_num = 0
+    with torch.no_grad():
+        for data in tqdm(valid_loader, desc=f'epoch {epoch} dev'):
             input_ids = data[0].to('cuda')
             token_type_ids = data[1].to('cuda')
             attention_mask = data[2].to('cuda')
@@ -119,24 +175,16 @@ for epoch in range(1, epochs + 1):
             outputs = model(input_ids=input_ids,
                             token_type_ids=token_type_ids,
                             attention_mask=attention_mask,
-                            labels=labels,
                             position_ids=position_ids)
 
             logits = outputs['logits']
-            loss = outputs['loss']
 
-            probs = F.softmax(logits, dim=1)
-            correct += sum(probs.argmax(dim=1) == labels).item()
+            probs = F.softmax(logits, dim=-1)
+            correct += sum(probs.argmax(dim=-1) == labels).item()
             data_num += labels.shape[0]
-            acc = correct / data_num
 
-            global_step += 1
-            if global_step % 100 == 0:
-                print("global step %d, epoch: %d, batch: %d, loss: %.5f, acc: %.5f, time: %s"
-                      % (global_step, epoch, batch_id, loss, acc, time.asctime()))
+    acc = correct / data_num
 
-            loss.backward()
-            optimizer.step()
-            scheduler.step()
-            optimizer.zero_grad()
+    print("epoch: %d, dev accuracy: %.5f, time: %s" % (epoch, acc, time.asctime()))
 
+torch.save(model.state_dict(), os.path.join(root_path, 'model\\pytorch_model.bin'))
