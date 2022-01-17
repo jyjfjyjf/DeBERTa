@@ -3,8 +3,7 @@ import six
 import unicodedata
 import os
 import regex as re
-from scripts.cache_utils import load_vocab
-from scripts.logger_utils import get_logger
+from tools.logger_utils import get_logger
 import pdb
 
 logger = get_logger()

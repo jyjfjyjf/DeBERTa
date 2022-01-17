@@ -5,7 +5,10 @@ vocab_path = os.path.join(model_dir, 'spm.model')
 model_path = os.path.join(model_dir, 'pytorch_model.bin')
 paddle_model_path = os.path.join(model_dir, 'model_state.pdparams')
 batch_size = 1
-max_length = 256
-lr = 3e-5
+valid_batch_size = 4
+max_length = 128
+lr = 4e-6
+adv_weight = 5  # 对抗学习权重
+seed = 2022369
 
 

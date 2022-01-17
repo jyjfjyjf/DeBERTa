@@ -13,9 +13,9 @@ from paddlenlp.data import Dict, Pad, Stack
 from paddlenlp.datasets import load_dataset
 
 from config import vocab_path, model_dir
-from scripts.deberta_config import DebertaV2Config
-from scripts.sequence_classification import SequenceClassificationModel
-from scripts.spm_tokenizer import SPMTokenizer
+from tools.deberta_config import DebertaV2Config
+from tools.sequence_classification import SequenceClassificationModel
+from tools.spm_tokenizer import SPMTokenizer
 from reprod_log import ReprodLogger
 
 

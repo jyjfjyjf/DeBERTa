@@ -5,8 +5,8 @@ import numpy as np
 import paddle
 from paddle import nn
 from paddle.nn import BCEWithLogitsLoss, CrossEntropyLoss, LayerNorm, MSELoss
-from scripts.logger_utils import get_logger
-from scripts.deberta_config import DebertaV2Config
+from tools.logger_utils import get_logger
+from tools.deberta_config import DebertaV2Config
 
 logger = get_logger(__name__)
 

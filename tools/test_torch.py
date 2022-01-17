@@ -1,13 +1,13 @@
 import os.path
 
 from my_datasets import MNLIDatasetPT
-from scripts.sift_torch import hook_sift_layer, AdversarialLearner
+from tools.sift_torch import hook_sift_layer, AdversarialLearner
 from spm_tokenizer import SPMTokenizer
-from datasets import load_dataset, load_metric
+from datasets import load_dataset
 from config import vocab_path, batch_size, max_length, model_dir, model_path, \
     lr, adv_weight, root_path, valid_batch_size, seed
 from transformers.models.deberta_v2 import DebertaV2ForSequenceClassification, \
-    DebertaV2Config, DebertaV2Tokenizer
+    DebertaV2Config
 import torch
 import time
 from torch.utils.data import DataLoader
@@ -19,16 +19,15 @@ import numpy as np
 import random
 
 
-def setup_torch_seed(seed):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.cuda.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
+def setup_torch_seed(sts_seed):
+    torch.manual_seed(sts_seed)
+    torch.cuda.manual_seed_all(sts_seed)
+    torch.cuda.manual_seed(sts_seed)
+    np.random.seed(sts_seed)
+    random.seed(sts_seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.enabled = False
     torch.backends.cudnn.benchmark = False
-    #torch.backends.cudnn.benchmark = True #for accelerating the running
 
 
 setup_torch_seed(seed)

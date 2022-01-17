@@ -3,11 +3,9 @@ Pooling functions
 """
 
 from paddle import nn
-import copy
-import json
-from scripts.bert import ACT2FN
-from scripts.ops import StableDropout
-from scripts.deberta_config import AbsModelConfig
+from tools.bert import ACT2FN
+from tools.ops import StableDropout
+from tools.deberta_config import AbsModelConfig
 
 __all__ = ['PoolConfig', 'ContextPooler']
 

@@ -1,6 +1,6 @@
 import numpy as np
 from my_datasets import MNLIDatasetPD
-from scripts.sift import hook_sift_layer, AdversarialLearner
+from tools.sift import hook_sift_layer, AdversarialLearner
 from spm_tokenizer import SPMTokenizer
 from collections.abc import Sequence
 from config import vocab_path, batch_size, max_length, model_dir, model_path, \

@@ -1,13 +1,8 @@
 import copy
 import paddle
-import os
 
-import json
-from scripts.ops import *
-from scripts.bert import *
-from scripts.deberta_config import DebertaV2Config
-from scripts.cache_utils import load_model_state
-import pdb
+from tools.bert import *
+from tools.cache_utils import load_model_state
 
 __all__ = ['DeBERTa']
 

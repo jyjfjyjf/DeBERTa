@@ -2,8 +2,8 @@ import numpy as np
 import paddle
 # 导入模型
 from config import model_dir, paddle_model_path
-from scripts.deberta_config import DebertaV2Config
-from scripts.sequence_classification import SequenceClassificationModel
+from tools.deberta_config import DebertaV2Config
+from tools.sequence_classification import SequenceClassificationModel
 # 导入reprod_log中的ReprodLogger类
 from reprod_log import ReprodLogger
 

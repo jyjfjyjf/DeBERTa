@@ -3,8 +3,8 @@ import paddle
 import torch
 
 from config import model_dir, model_path, paddle_model_path
-from scripts.deberta_config import DebertaV2Config
-from scripts.sequence_classification import SequenceClassificationModel
+from tools.deberta_config import DebertaV2Config
+from tools.sequence_classification import SequenceClassificationModel
 from reprod_log import ReprodLogger
 from transformers import AdamW
 from transformers import DebertaV2ForSequenceClassification

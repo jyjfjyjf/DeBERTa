@@ -1,14 +1,10 @@
-import numpy as np
 import math
 import paddle
 from paddle import nn
-import functools
-import pdb
 
-from scripts.ops import *
-from scripts.da_utils import build_relative_position
-from paddle.fluid.layers import reshape, transpose, clip, gather, concat
-from scripts.logger_utils import get_logger
+from tools.da_utils import build_relative_position
+from paddle.fluid.layers import reshape, transpose, clip
+from tools.logger_utils import get_logger
 
 logger = get_logger()
 

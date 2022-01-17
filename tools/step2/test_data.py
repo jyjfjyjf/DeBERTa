@@ -4,14 +4,14 @@ import numpy as np
 import paddle
 import paddlenlp
 import torch
-from datasets import Dataset, load_dataset
+from datasets import load_dataset
 from paddlenlp.data import Dict, Pad, Stack
 from paddlenlp.datasets import load_dataset as ppnlp_load_dataset
 from reprod_log import ReprodDiffHelper, ReprodLogger
 from transformers import DataCollatorWithPadding, DebertaV2Tokenizer
 from config import max_length, vocab_path, model_dir
-from scripts.my_datasets import _truncate_segments
-from scripts.spm_tokenizer import SPMTokenizer
+from tools.my_datasets import _truncate_segments
+from tools.spm_tokenizer import SPMTokenizer
 import random
 
 

@@ -191,12 +191,6 @@ class AdversarialLearner:
 def symmetric_kl(logits, target):
     logit_stu = logits.view(-1, logits.size(-1)).float()
     logit_tea = target.view(-1, target.size(-1)).float()
-
-    from reprod_log import ReprodLogger
-    reprod_logger = ReprodLogger()
-    reprod_logger.add("loss", logit_stu.cpu().detach().numpy())
-    reprod_logger.save("loss_torch.npy")
-
     logprob_stu = F.log_softmax(logit_stu, -1)
     logprob_tea = F.log_softmax(logit_tea, -1)
     prob_tea = logprob_tea.exp().detach()

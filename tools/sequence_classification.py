@@ -4,11 +4,9 @@ from __future__ import print_function
 
 import paddle
 from paddle.nn import CrossEntropyLoss
-import math
-from scripts.nnmodule import NNModule
-from scripts.debera import *
-from scripts.pooling import PoolConfig, ContextPooler
-from scripts.ops import *
+from tools.nnmodule import NNModule
+from tools.debera import *
+from tools.pooling import PoolConfig, ContextPooler
 from paddle.fluid.layers import reshape
 
 __all__ = ['SequenceClassificationModel']

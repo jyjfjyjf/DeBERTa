@@ -4,8 +4,8 @@ import pathlib
 import paddle
 from tqdm import tqdm
 import requests
-from scripts.logger_utils import get_logger
-from scripts.deberta_config import DebertaV2Config
+from tools.logger_utils import get_logger
+from tools.deberta_config import DebertaV2Config
 
 logger = get_logger()
 

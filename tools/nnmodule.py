@@ -1,9 +1,9 @@
 import copy
-from scripts.deberta_config import DebertaV2Config
+from tools.deberta_config import DebertaV2Config
 import paddle
-from scripts.cache_utils import load_model_state
+from tools.cache_utils import load_model_state
 
-from scripts.logger_utils import get_logger
+from tools.logger_utils import get_logger
 
 logger = get_logger()
 

@@ -1,16 +1,6 @@
 import copy
-import paddle
-from paddle import nn
-from collections import Sequence
-from packaging import version
-import numpy as np
-import math
-import os
-import pdb
-import json
-from scripts.ops import *
-from scripts.disentangled_attention import *
-from scripts.da_utils import *
+from collections.abc import Sequence
+from tools.disentangled_attention import *
 
 __all__ = ['BertEncoder', 'BertEmbeddings', 'ACT2FN', 'LayerNorm', 'BertLMPredictionHead']
 
