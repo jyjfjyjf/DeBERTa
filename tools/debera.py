@@ -41,9 +41,11 @@ class DeBERTa(paddle.nn.Layer):
         ebd_output = self.embeddings(input_ids.astype('int64'), token_type_ids.astype('int64'), position_ids,
                                      attention_mask)
         embedding_output = ebd_output['embeddings']
+
         encoder_output = self.encoder(embedding_output,
                                       attention_mask,
                                       output_all_encoded_layers=output_all_encoded_layers, return_att=return_att)
+
         encoder_output.update(ebd_output)
 
         return encoder_output

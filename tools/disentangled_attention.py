@@ -5,6 +5,7 @@ from paddle import nn
 from tools.da_utils import build_relative_position
 from paddle.fluid.layers import reshape, transpose, clip
 from tools.logger_utils import get_logger
+from tools.ops import StableDropout, XSoftmax
 
 logger = get_logger()
 
@@ -57,11 +58,18 @@ class DisentangledSelfAttention(nn.Layer):
 
     def forward(self, hidden_states, attention_mask, return_att=False, query_states=None, relative_pos=None,
                 rel_embeddings=None):
+
         if query_states is None:
             query_states = hidden_states
         query_layer = self.transpose_for_scores(self.query_proj(query_states),
-                                                self.num_attention_heads).astype('float32')
-        key_layer = self.transpose_for_scores(self.key_proj(hidden_states), self.num_attention_heads).astype('float32')
+                                                self.num_attention_heads)
+
+        from reprod_log import ReprodLogger
+        reprod_logger = ReprodLogger()
+        reprod_logger.add("logits", self.query_proj(query_states).cpu().detach().numpy())
+        reprod_logger.save("forward_paddle.npy")
+
+        key_layer = self.transpose_for_scores(self.key_proj(hidden_states), self.num_attention_heads)
         value_layer = self.transpose_for_scores(self.value_proj(hidden_states), self.num_attention_heads)
 
         rel_att = None
@@ -74,7 +82,7 @@ class DisentangledSelfAttention(nn.Layer):
         if 'p2p' in self.pos_att_type:
             scale_factor += 1
         scale = math.sqrt(query_layer.shape[-1] * scale_factor)
-        attention_scores = paddle.bmm(query_layer, transpose(key_layer, (0, 2, 1)) / scale)
+        attention_scores = paddle.bmm(query_layer, transpose(key_layer, (0, 2, 1))) / scale
 
         if self.relative_attention:
             rel_embeddings = self.pos_dropout(rel_embeddings)
@@ -82,7 +90,8 @@ class DisentangledSelfAttention(nn.Layer):
                                                        scale_factor)
 
         if rel_att is not None:
-            attention_scores = (attention_scores + rel_att)
+            attention_scores = attention_scores + rel_att
+        attention_scores = attention_scores
 
         # attention_scores = (attention_scores - attention_scores.max(axis=-1, keepdim=True).detach()).astype(
         #     hidden_states.dtype)
@@ -163,7 +172,7 @@ class DisentangledSelfAttention(nn.Layer):
         # content->position
         if 'c2p' in self.pos_att_type:
             scale = math.sqrt(pos_key_layer.shape[-1] * scale_factor)
-            c2p_att = paddle.bmm(query_layer / scale, transpose(pos_key_layer, (0, 2, 1)).astype(query_layer.dtype))
+            c2p_att = paddle.bmm(query_layer, transpose(pos_key_layer, (0, 2, 1)).astype(query_layer.dtype))
             c2p_pos = clip(relative_pos + att_span, 0, att_span * 2 - 1)
             # index = c2p_pos.squeeze(0).expand(
             #     [query_layer.shape[0], query_layer.shape[1], relative_pos.shape[-1]])
@@ -188,7 +197,7 @@ class DisentangledSelfAttention(nn.Layer):
 
             # c2p_att = torch.gather(c2p_att, dim=-1, index=c2p_pos.squeeze(0).expand(
             #     [query_layer.shape[0], query_layer.shape[1], relative_pos.shape[-1]]))
-            score += c2p_att
+            score += c2p_att / scale
 
         # position->content
         if 'p2c' in self.pos_att_type or 'p2p' in self.pos_att_type:
@@ -262,11 +271,18 @@ class DisentangledSelfAttention(nn.Layer):
             pos_query = pos_query_layer[:, :, att_span:, :]
             p2p_att = paddle.matmul(pos_query, pos_key_layer.transpose(-1, -2))
             p2p_att = p2p_att.expand(query_layer.shape[:2] + p2p_att.shape[2:])
-            if query_layer.shape[-2] != key_layer.shape[-2]:
-                p2p_att = paddle.gather(p2p_att, axis=-2, index=pos_index.expand(
-                    query_layer.shape[:2] + (pos_index.shape[-2], p2p_att.shape[-1])))
-            p2p_att = paddle.gather(p2p_att, axis=-1, index=c2p_pos.expand(
-                [query_layer.shape[0], query_layer.shape[1], query_layer.shape[2], relative_pos.shape[-1]]))
+
+            # p2p_att = paddle.gather(p2p_att, axis=-1, index=c2p_pos.expand(
+            #     [query_layer.shape[0], query_layer.shape[1], query_layer.shape[2], relative_pos.shape[-1]]))
+            b, c, _ = tuple(p2p_att.shape)
+            p2p_att = paddle.index_sample(p2p_att.flatten(0, 1),
+                                          c2p_pos.squeeze(0).
+                                          expand([query_layer.shape[1],
+                                                  query_layer.shape[2],
+                                                  relative_pos.shape[-1]]).flatten(0, 1)).reshape((b, c, -1))
+
+            p2p_att = transpose(p2p_att, (0, 2, 1))
+
             score += p2p_att
 
         return score

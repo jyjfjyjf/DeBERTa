@@ -1,6 +1,16 @@
 import copy
+import paddle
+from paddle import nn, transpose
 from collections.abc import Sequence
-from tools.disentangled_attention import *
+from packaging import version
+import numpy as np
+import math
+import os
+import pdb
+import json
+from tools.ops import LayerNorm, ACT2FN, MaskedLayerNorm, StableDropout
+from tools.disentangled_attention import DisentangledSelfAttention
+from tools.da_utils import build_relative_position
 
 __all__ = ['BertEncoder', 'BertEmbeddings', 'ACT2FN', 'LayerNorm', 'BertLMPredictionHead']
 
@@ -78,9 +88,7 @@ class BertOutput(nn.Layer):
         self.config = config
 
     def forward(self, hidden_states, input_states, mask=None):
-
         hidden_states = self.dense(hidden_states)
-
         hidden_states = self.dropout(hidden_states)
         hidden_states += input_states
         hidden_states = MaskedLayerNorm(self.LayerNorm, hidden_states)
@@ -211,6 +219,7 @@ class BertEncoder(nn.Layer):
         else:
             next_kv = hidden_states
         rel_embeddings = self.get_rel_embedding()
+
         for i, layer_module in enumerate(self.layer):
 
             output_states = layer_module(next_kv, attention_mask, return_att, query_states=query_states,
@@ -281,11 +290,11 @@ class BertEmbeddings(nn.Layer):
             token_type_ids = paddle.zeros_like(input_ids)
 
         words_embeddings = self.word_embeddings(input_ids)
+
         if self.position_embeddings is not None:
             position_embeddings = self.position_embeddings(position_ids.astype('int64'))
         else:
             position_embeddings = paddle.zeros_like(words_embeddings)
-
 
         embeddings = words_embeddings
         if self.config.type_vocab_size > 0:
@@ -299,7 +308,9 @@ class BertEmbeddings(nn.Layer):
             embeddings = self.embed_proj(embeddings)
 
         embeddings = MaskedLayerNorm(self.LayerNorm, embeddings, mask)
+
         embeddings = self.dropout(embeddings)
+
         return {
             'embeddings': embeddings,
             'position_embeddings': position_embeddings}

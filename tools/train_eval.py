@@ -1,10 +1,10 @@
 import numpy as np
 from my_datasets import MNLIDatasetPD
 from tools.sift import hook_sift_layer, AdversarialLearner
-from spm_tokenizer import SPMTokenizer
+from spm_tokenizer import DebertaV2Tokenizer
 from collections.abc import Sequence
 from config import vocab_path, batch_size, max_length, model_dir, model_path, \
-    paddle_model_path, lr, adv_weight, seed
+    paddle_model_path, lr, adv_weight, seed, train_data_path, valid_data_path, valid_batch_size
 import paddlenlp
 import paddle
 from transformers import DebertaV2ForSequenceClassification as torch_DebertaV2ForSequenceClassification
@@ -25,6 +25,7 @@ def setup_paddle_seed(sps_seed):
 
 setup_paddle_seed(seed)
 
+
 def padding(indice, max_len, pad_idx=0):
     """
         补齐方法
@@ -34,55 +35,35 @@ def padding(indice, max_len, pad_idx=0):
 
 
 def mnli_collate_fn(batch):
-    input_ids = [mcf_d['input_ids'] for mcf_d in batch]
-    token_type_ids = [mcf_d['type_ids'] for mcf_d in batch]
-    position_ids = [mcf_d['position_ids'] for mcf_d in batch]
-    attention_mask = [mcf_d['attention_mask'] for mcf_d in batch]
-    labels = [mcf_d['labels'] for mcf_d in batch]
+    mcf_input_ids = [mcf_d['input_ids'] for mcf_d in batch]
+    mcf_token_type_ids = [mcf_d['type_ids'] for mcf_d in batch]
+    mcf_labels = [mcf_d['labels'] for mcf_d in batch]
 
-    mcf_max_length = max(len(t) for t in input_ids)
-    input_ids_padded = padding(input_ids, mcf_max_length)
-    token_type_ids_padded = padding(token_type_ids, mcf_max_length)
-    position_ids_padded = padding(position_ids, mcf_max_length)
-    attention_mask_padded = padding(attention_mask, mcf_max_length)
+    mcf_max_length = max(len(t) for t in mcf_input_ids)
+    input_ids_padded = padding(mcf_input_ids, mcf_max_length)
+    token_type_ids_padded = padding(mcf_token_type_ids, mcf_max_length)
 
-    return input_ids_padded, token_type_ids_padded, attention_mask_padded, position_ids_padded, \
-           paddle.to_tensor(labels)
+    return input_ids_padded, token_type_ids_padded, \
+        paddle.to_tensor(mcf_labels)
 
 
 vocab_path = vocab_path
 
-tokenizer = SPMTokenizer(vocab_path)
-train_data, dev_data = paddlenlp.datasets.load_dataset('glue', 'mnli', splits=("train", "dev_mismatched"))
+tokenizer = DebertaV2Tokenizer(vocab_path)
+
+# tokenizer = GPTTokenizer.from_pretrained(model_dir)
+# train_data, dev_data = paddlenlp.datasets.load_dataset('glue', 'mnli', splits=("train", "dev_mismatched"))
 
 train_dataset = MNLIDatasetPD(tokenizer=tokenizer,
-                              samples=train_data,
+                              data_path=train_data_path,
                               max_length=max_length)
 
 dev_dataset = MNLIDatasetPD(tokenizer=tokenizer,
-                            samples=dev_data,
+                            data_path=valid_data_path,
                             max_length=max_length)
 
 train_loader = paddle.io.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=mnli_collate_fn)
-dev_loader = paddle.io.DataLoader(dev_dataset, batch_size=batch_size, shuffle=False, collate_fn=mnli_collate_fn)
-
-"""模型torch转paddle"""
-# torch_dict = torch.load(model_path)
-#
-# paddle_dict = {}
-#
-# fc_names = ['self.query', 'self.key', 'self.value', 'dense', 'self.pos_query_proj',
-#             'self.pos_key_proj']
-#
-# for key in torch_dict:
-#     weight = torch_dict[key].cpu().numpy()
-#     flag = [i in key for i in fc_names]
-#     if any(flag):
-#         print('weight {} need to be trans'.format(key))
-#         weight = weight.transpose()
-#     paddle_dict[key] = weight.astype('float32')
-#
-# paddle.save(paddle_dict, paddle_model_path)
+dev_loader = paddle.io.DataLoader(dev_dataset, batch_size=valid_batch_size, shuffle=False, collate_fn=mnli_collate_fn)
 
 config = DebertaV2Config.from_pretrain(model_dir)
 config.use_return_dict = False
@@ -154,15 +135,11 @@ for epoch in range(1, epochs + 1):
     for data in tqdm(train_loader, desc=f'epoch {epoch} training'):
         input_ids = paddle.to_tensor(data[0])
         token_type_ids = paddle.to_tensor(data[1])
-        attention_mask = paddle.to_tensor(data[2])
-        position_ids = paddle.to_tensor(data[3])
-        labels = paddle.to_tensor(data[4])
+        labels = paddle.to_tensor(data[2])
 
         input_data = {'input_ids': input_ids,
                       'token_type_ids': token_type_ids,
-                      'attention_mask': attention_mask,
-                      'labels': labels,
-                      'position_ids': position_ids}
+                      'labels': labels}
 
         outputs = model(**input_data)
 
@@ -179,7 +156,7 @@ for epoch in range(1, epochs + 1):
         loss = outputs['loss']
         loss += adv.loss(logits, pert_logits_fn,
                          loss_fn="symmetric-kl", **input_data) * adv_weight
-        loss = loss / (1 + adv_weight)
+        loss = loss / 2
 
 
         probs = F.softmax(logits, axis=-1)
@@ -200,9 +177,6 @@ for epoch in range(1, epochs + 1):
         optimizer.step()
         lr_scheduler.step()
 
-        # for p in model.parameters():
-        #     print(p.grad)
-
         optimizer.clear_grad()
 
     with paddle.no_grad():
@@ -210,13 +184,9 @@ for epoch in range(1, epochs + 1):
         for data in tqdm(dev_loader, desc=f'epoch {epoch} dev'):
             input_ids = paddle.to_tensor(data[0])
             token_type_ids = paddle.to_tensor(data[1])
-            attention_mask = paddle.to_tensor(data[2])
-            position_ids = paddle.to_tensor(data[3])
-            labels = paddle.to_tensor(data[4])
+            labels = paddle.to_tensor(data[2])
             outputs = model(input_ids=input_ids,
-                            type_ids=token_type_ids,
-                            input_mask=attention_mask,
-                            position_ids=position_ids)
+                            type_ids=token_type_ids)
 
             logits = outputs['logits']
 
@@ -225,4 +195,6 @@ for epoch in range(1, epochs + 1):
             metric.update(correct)
             acc = metric.accumulate()
 
-        print('dev accuracy %d'.format(acc))
+        print('dev accuracy ', acc)
+    state_dict = model.state_dict()
+    paddle.save(state_dict, f"epoch_{epoch}_model.pdparams")

@@ -6,6 +6,7 @@ import paddle
 from paddle.nn import CrossEntropyLoss
 from tools.nnmodule import NNModule
 from tools.debera import *
+from tools.ops import StableDropout
 from tools.pooling import PoolConfig, ContextPooler
 from paddle.fluid.layers import reshape
 
