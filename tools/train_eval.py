@@ -8,6 +8,7 @@ from config import vocab_path, batch_size, max_length, model_dir, model_path, \
 import paddlenlp
 import paddle
 from transformers import DebertaV2ForSequenceClassification as torch_DebertaV2ForSequenceClassification
+from transformers.models.deberta_v2 import DebertaV2Config as torch_DebertaV2Config
 import torch
 from deberta_config import DebertaV2Config
 from sequence_classification import SequenceClassificationModel
@@ -15,6 +16,7 @@ from tqdm import tqdm
 import paddle.nn.functional as F
 from paddlenlp.transformers import LinearDecayWithWarmup
 import random
+from transformers import AdamW, get_linear_schedule_with_warmup
 
 
 def setup_paddle_seed(sps_seed):
@@ -65,34 +67,12 @@ dev_dataset = MNLIDatasetPD(tokenizer=tokenizer,
 train_loader = paddle.io.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=mnli_collate_fn)
 dev_loader = paddle.io.DataLoader(dev_dataset, batch_size=valid_batch_size, shuffle=False, collate_fn=mnli_collate_fn)
 
-config = DebertaV2Config.from_pretrain(model_dir)
-config.use_return_dict = False
+# config = DebertaV2Config.from_pretrain(model_dir)
+config = torch_DebertaV2Config.from_pretrained(model_dir)
+# config.use_return_dict = False
 config.output_attentions = False
 config.output_hidden_states = False
-
-
-def test_forward(tf_config):
-    from transformers import DebertaV2Config
-    config_torch = DebertaV2Config.from_pretrained(model_dir)
-    model_torch = torch_DebertaV2ForSequenceClassification(config_torch)
-    model_paddle = SequenceClassificationModel(tf_config)
-    model_torch.eval()
-    model_paddle.eval()
-    torch_checkpoint = torch.load(model_path)
-    model_torch.load_state_dict(torch_checkpoint, strict=False)
-    paddle_checkpoint = paddle.load(paddle_model_path)
-    model_paddle.set_state_dict(paddle_checkpoint)
-
-    x = np.random.randint(1, 10, size=(2, 10))
-    input_torch = torch.tensor(x, dtype=torch.long)
-    out_torch = model_torch(input_torch)
-
-    input_paddle = paddle.to_tensor(x, dtype='int64')
-    output_paddle = model_paddle(input_paddle, return_dict=False)
-
-    print(out_torch)
-
-    print(output_paddle)
+config.num_labels = 3
 
 
 # test_forward(config)
@@ -103,22 +83,35 @@ warmup_proportion = 0.01
 
 weight_decay = 0.01
 
-model = SequenceClassificationModel(config)
-checkpoint = paddle.load(paddle_model_path)
-model.set_state_dict(checkpoint)
+# model = SequenceClassificationModel(config)
+
+model = torch_DebertaV2ForSequenceClassification(config)
+
+# checkpoint = paddle.load(paddle_model_path)
+# model.set_state_dict(checkpoint)
 
 num_training_steps = len(train_loader) * epochs
-lr_scheduler = LinearDecayWithWarmup(lr, num_training_steps, warmup_proportion)
-optimizer = paddle.optimizer.AdamW(
-    learning_rate=lr_scheduler,
-    parameters=list(model.parameters()),
-    weight_decay=weight_decay,
-    apply_decay_param_fun=lambda x: x in [
-        p.name for n, p in model.named_parameters()
-        if not any(nd in n for nd in ["bias", "norm"])
-    ]
+# lr_scheduler = LinearDecayWithWarmup(lr, num_training_steps, warmup_proportion)
+# optimizer = paddle.optimizer.AdamW(
+#     learning_rate=lr_scheduler,
+#     parameters=list(model.parameters()),
+#     weight_decay=weight_decay,
+#     apply_decay_param_fun=lambda x: x in [
+#         p.name for n, p in model.named_parameters()
+#         if not any(nd in n for nd in ["bias", "norm"])
+#     ]
+# )
+
+optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+scheduler = get_linear_schedule_with_warmup(
+    optimizer,
+    num_warmup_steps=warmup_proportion * num_training_steps,
+    num_training_steps=(1 - warmup_proportion) * num_training_steps
 )
+
 metric = paddle.metric.Accuracy()
+
+model.to('cuda')
 
 global_step = 0
 for epoch in range(1, epochs + 1):
@@ -126,16 +119,21 @@ for epoch in range(1, epochs + 1):
     data_num = 0
     batch_id = 0
     model.train()
-    adv_modules = hook_sift_layer(model,
-                                  hidden_size=model.config.hidden_size,
-                                  learning_rate=1e-4,
-                                  init_perturbation=1e-2)
+    # adv_modules = hook_sift_layer(model,
+    #                               hidden_size=model.config.hidden_size,
+    #                               learning_rate=1e-4,
+    #                               init_perturbation=1e-2)
+    #
+    # adv = AdversarialLearner(model, adv_modules)
 
-    adv = AdversarialLearner(model, adv_modules)
     for data in tqdm(train_loader, desc=f'epoch {epoch} training'):
-        input_ids = paddle.to_tensor(data[0])
-        token_type_ids = paddle.to_tensor(data[1])
-        labels = paddle.to_tensor(data[2])
+        # input_ids = paddle.to_tensor(data[0])
+        # token_type_ids = paddle.to_tensor(data[1])
+        # labels = paddle.to_tensor(data[2])
+
+        input_ids = torch.tensor(data[0].numpy()).to('cuda')
+        token_type_ids = torch.tensor(data[1].numpy()).to('cuda')
+        labels = torch.tensor(data[2].numpy()).to('cuda')
 
         input_data = {'input_ids': input_ids,
                       'token_type_ids': token_type_ids,
@@ -154,13 +152,16 @@ for epoch in range(1, epochs + 1):
 
         logits = outputs['logits']
         loss = outputs['loss']
-        loss += adv.loss(logits, pert_logits_fn,
-                         loss_fn="symmetric-kl", **input_data) * adv_weight
-        loss = loss / 2
+        # loss += adv.loss(logits, pert_logits_fn,
+        #                  loss_fn="symmetric-kl", **input_data) * adv_weight
+        # loss = loss / 2
 
 
-        probs = F.softmax(logits, axis=-1)
-        correct = metric.compute(probs, labels)
+        # probs = F.softmax(logits, axis=-1)
+
+        probs = torch.softmax(logits, dim=-1)
+
+        correct = metric.compute(paddle.to_tensor(probs.cpu().detach().numpy()), paddle.to_tensor(labels.cpu().detach().numpy()))
         metric.update(correct)
         acc = metric.accumulate()
         # probs = F.softmax(logits, axis=1)
@@ -174,17 +175,27 @@ for epoch in range(1, epochs + 1):
                 global_step, epoch, batch_id, loss, acc))
 
         loss.backward()
-        optimizer.step()
-        lr_scheduler.step()
 
-        optimizer.clear_grad()
+        optimizer.step()
+        scheduler.step()
+        optimizer.zero_grad()
+
+        # optimizer.step()
+        # lr_scheduler.step()
+        #
+        # optimizer.clear_grad()
 
     with paddle.no_grad():
         model.eval()
         for data in tqdm(dev_loader, desc=f'epoch {epoch} dev'):
-            input_ids = paddle.to_tensor(data[0])
-            token_type_ids = paddle.to_tensor(data[1])
-            labels = paddle.to_tensor(data[2])
+            # input_ids = paddle.to_tensor(data[0])
+            # token_type_ids = paddle.to_tensor(data[1])
+            # labels = paddle.to_tensor(data[2])
+
+            input_ids = torch.tensor(data[0].numpy()).to('cuda')
+            token_type_ids = torch.tensor(data[1].numpy()).to('cuda')
+            labels = torch.tensor(data[2].numpy()).to('cuda')
+
             outputs = model(input_ids=input_ids,
                             type_ids=token_type_ids)
 

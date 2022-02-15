@@ -25,7 +25,6 @@ class BertSelfOutput(nn.Layer):
         self.config = config
 
     def forward(self, hidden_states, input_states, mask=None):
-
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
         hidden_states += input_states
@@ -57,6 +56,7 @@ class BertAttention(nn.Layer):
 
         if query_states is None:
             query_states = hidden_states
+
         attention_output = self.output(self_output, query_states, attention_mask)
 
         if return_att:
@@ -118,6 +118,11 @@ class BertLayer(nn.Layer):
         intermediate_output = self.intermediate(attention_output)
 
         layer_output = self.output(intermediate_output, attention_output, attention_mask)
+
+        # from reprod_log import ReprodLogger
+        # reprod_logger = ReprodLogger()
+        # reprod_logger.add("logits", layer_output.cpu().detach().numpy())
+        # reprod_logger.save("forward_paddle.npy")
 
         if return_att:
             return (layer_output, att_matrix)
@@ -238,6 +243,12 @@ class BertEncoder(nn.Layer):
                     next_kv = hidden_states[i + 1] if i + 1 < len(self.layer) else None
             else:
                 next_kv = output_states
+
+            # if i == 7:
+            #     from reprod_log import ReprodLogger
+            #     reprod_logger = ReprodLogger()
+            #     reprod_logger.add("logits", next_kv.cpu().detach().numpy())
+            #     reprod_logger.save("forward_paddle.npy")
 
             if output_all_encoded_layers:
                 all_encoder_layers.append(output_states)

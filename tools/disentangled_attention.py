@@ -1,4 +1,6 @@
 import math
+
+import numpy as np
 import paddle
 from paddle import nn
 
@@ -63,14 +65,13 @@ class DisentangledSelfAttention(nn.Layer):
             query_states = hidden_states
         query_layer = self.transpose_for_scores(self.query_proj(query_states),
                                                 self.num_attention_heads)
+        key_layer = self.transpose_for_scores(self.key_proj(hidden_states), self.num_attention_heads)
+        value_layer = self.transpose_for_scores(self.value_proj(hidden_states), self.num_attention_heads)
 
         from reprod_log import ReprodLogger
         reprod_logger = ReprodLogger()
-        reprod_logger.add("logits", self.query_proj(query_states).cpu().detach().numpy())
+        reprod_logger.add("logits", self.query_proj.weight.T.cpu().detach().numpy())
         reprod_logger.save("forward_paddle.npy")
-
-        key_layer = self.transpose_for_scores(self.key_proj(hidden_states), self.num_attention_heads)
-        value_layer = self.transpose_for_scores(self.value_proj(hidden_states), self.num_attention_heads)
 
         rel_att = None
         # Take the dot product between "query" and "key" to get the raw attention scores.
@@ -91,6 +92,7 @@ class DisentangledSelfAttention(nn.Layer):
 
         if rel_att is not None:
             attention_scores = attention_scores + rel_att
+
         attention_scores = attention_scores
 
         # attention_scores = (attention_scores - attention_scores.max(axis=-1, keepdim=True).detach()).astype(
@@ -125,6 +127,7 @@ class DisentangledSelfAttention(nn.Layer):
             q = query_layer.shape[-2]
             relative_pos = build_relative_position(q, key_layer.shape[-2], bucket_size=self.position_buckets,
                                                    max_position=self.max_relative_positions)
+
         if relative_pos.dim() == 2:
             relative_pos = relative_pos.unsqueeze(0).unsqueeze(0)
         elif relative_pos.dim() == 3:
@@ -138,6 +141,7 @@ class DisentangledSelfAttention(nn.Layer):
 
         rel_embeddings = rel_embeddings[self.pos_ebd_size - att_span:self.pos_ebd_size + att_span, :].unsqueeze(
             0)  # .repeat(query_layer.size(0)//self.num_attention_heads, 1, 1)
+
         if self.share_att_key:
             # pos_query_layer = self.transpose_for_scores(self.query_proj(rel_embeddings), self.num_attention_heads) \
             #     .repeat(query_layer.shape[0] // self.num_attention_heads, 1, 1)  # .split(self.all_head_size, dim=-1)
