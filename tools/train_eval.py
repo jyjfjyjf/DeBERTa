@@ -167,8 +167,8 @@ for epoch in range(1, epochs + 1):
         # acc = correct / data_num
 
         global_step += 1
-        if global_step % 10 == 0:
-            logger("global step %d, epoch: %d, batch: %d, loss: %.5f, acc: %.5f" % (
+        if global_step % 100 == 0:
+            logger.info("global step %d, epoch: %d, batch: %d, loss: %.5f, acc: %.5f" % (
                 global_step, epoch, batch_id, loss, acc))
 
         loss.backward()
@@ -204,6 +204,6 @@ for epoch in range(1, epochs + 1):
             metric.update(correct)
             acc = metric.accumulate()
 
-        logger('dev accuracy ', acc)
+        logger.info('dev accuracy ', acc)
     state_dict = model.state_dict()
     paddle.save(state_dict, f"epoch_{epoch}_model.pdparams")
