@@ -38,7 +38,7 @@ pip install sentencepiece
 ## 5 快速开始
 
 1. 将转换后的模型放到lib/deberta_large/下面 
->转换之后的模型链接为https://aistudio.baidu.com/aistudio/datasetdetail/125983
+>转换之后的模型链接为https://aistudio.baidu.com/aistudio/datasetdetail/129155
 2. 调整MNLI数据集目录：MNLI数据集较大，下载数据集到指定目录data/MNLI/
 3. 微调和验证：
    以下是训练以及验证MNLI的train_eval.py
