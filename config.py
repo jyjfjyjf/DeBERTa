@@ -10,7 +10,7 @@ max_length = 128
 lr = 1e-5
 adv_weight = 5  # 对抗学习权重
 seed = 2022369
-f16 = 'O2'
+f16 = 'O1'
 train_data_path = os.path.join(root_path, 'data\\MNLI\\train.tsv')
 valid_data_path = os.path.join(root_path, 'data\\MNLI\\dev_matched.tsv')
 
