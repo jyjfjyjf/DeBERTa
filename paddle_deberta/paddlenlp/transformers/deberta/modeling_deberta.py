@@ -1247,7 +1247,7 @@ class DebertaForSequenceClassification(DebertaPreTrainedModel):
                 loss = loss_fn(logits, labels.reshape((-1)))
             elif labels.dim() == 1 or labels.shape[-1] == 1:
                 label_index = (labels >= 0).nonzero()
-                labels = labels.lastype('int64')
+                labels = labels.astype('int64')
                 if label_index.shape[0] > 0:
                     logits = logits.reshape((-1, self.num_labels))
                     labels = labels.reshape([-1])

@@ -7,10 +7,10 @@ paddle_model_path = os.path.join(model_dir, 'model_state.pdparams')
 batch_size = 4
 valid_batch_size = 32
 max_length = 128
-lr = 4e-6
+lr = 1e-5
 adv_weight = 5  # 对抗学习权重
 seed = 2022369
-
+f16 = 'O2'
 train_data_path = os.path.join(root_path, 'data\\MNLI\\train.tsv')
 valid_data_path = os.path.join(root_path, 'data\\MNLI\\dev_matched.tsv')
 
