@@ -105,6 +105,9 @@ optimizer = paddle.optimizer.AdamW(
 
 metric = paddle.metric.Accuracy()
 
+scaler = paddle.amp.GradScaler(init_loss_scaling=1024)
+model, optimizer = paddle.amp.decorate(models=model, optimizers=optimizer, level=f16, master_weight=None, save_dtype=None)
+
 # model.to('cuda')
 
 global_step = 0
@@ -113,38 +116,37 @@ for epoch in range(1, epochs + 1):
     data_num = 0
     batch_id = 0
 
-    with paddle.amp.auto_cast(enable=True, custom_white_list=None, custom_black_list=None, level=f16):
-        model.train()
-        # adv_modules = hook_sift_layer(model,
-        #                               hidden_size=model.config.hidden_size,
-        #                               learning_rate=1e-4,
-        #                               init_perturbation=1e-2)
-        #
-        # adv = AdversarialLearner(model, adv_modules)
+    model.train()
+    # adv_modules = hook_sift_layer(model,
+    #                               hidden_size=model.config.hidden_size,
+    #                               learning_rate=1e-4,
+    #                               init_perturbation=1e-2)
+    #
+    # adv = AdversarialLearner(model, adv_modules)
 
-        for data in tqdm(train_loader, desc=f'epoch {epoch} training'):
-            input_ids = paddle.to_tensor(data[0])
-            token_type_ids = paddle.to_tensor(data[1])
-            labels = paddle.to_tensor(data[2])
+    for data in tqdm(train_loader, desc=f'epoch {epoch} training'):
+        input_ids = paddle.to_tensor(data[0])
+        token_type_ids = paddle.to_tensor(data[1])
+        labels = paddle.to_tensor(data[2])
 
-            # input_ids = torch.tensor(data[0].numpy()).to('cuda')
-            # token_type_ids = torch.tensor(data[1].numpy()).to('cuda')
-            # labels = torch.tensor(data[2].numpy()).to('cuda')
+        # input_ids = torch.tensor(data[0].numpy()).to('cuda')
+        # token_type_ids = torch.tensor(data[1].numpy()).to('cuda')
+        # labels = torch.tensor(data[2].numpy()).to('cuda')
 
-            input_data = {'input_ids': input_ids,
-                          'token_type_ids': token_type_ids,
-                          'labels': labels}
-
+        input_data = {'input_ids': input_ids,
+                      'token_type_ids': token_type_ids,
+                      'labels': labels}
+        with paddle.amp.auto_cast(enable=True, custom_white_list=None, custom_black_list=None, level=f16):
             outputs = model(**input_data)
 
-            if adv_weight > 0:
-                def pert_logits_fn(plf_model,
-                                   **plf_input_data):
-                    o = plf_model(**plf_input_data)
-                    plf_logits = o['logits']
-                    if isinstance(plf_logits, Sequence):
-                        plf_logits = plf_logits[-1]
-                    return plf_logits
+            # if adv_weight > 0:
+            #     def pert_logits_fn(plf_model,
+            #                        **plf_input_data):
+            #         o = plf_model(**plf_input_data)
+            #         plf_logits = o['logits']
+            #         if isinstance(plf_logits, Sequence):
+            #             plf_logits = plf_logits[-1]
+            #         return plf_logits
 
             # logits = outputs['logits']
             # loss = outputs['loss']
@@ -154,25 +156,31 @@ for epoch in range(1, epochs + 1):
             #                  loss_fn="symmetric-kl", **input_data) * adv_weight
             # loss = loss / 2
 
+        probs = F.softmax(logits, axis=-1)
 
-            probs = F.softmax(logits, axis=-1)
+        # probs = torch.softmax(logits, dim=-1)
 
-            # probs = torch.softmax(logits, dim=-1)
+        correct = metric.compute(paddle.to_tensor(probs.cpu().detach().numpy()),
+                                 paddle.to_tensor(labels.cpu().detach().numpy()))
+        metric.update(correct)
+        acc = metric.accumulate()
+        # probs = F.softmax(logits, axis=1)
+        # correct += np.sum((probs.argmax(axis=1) == labels).numpy() != 0)
+        # data_num += labels.shape[0]
+        # acc = correct / data_num
 
-            correct = metric.compute(paddle.to_tensor(probs.cpu().detach().numpy()),
-                                     paddle.to_tensor(labels.cpu().detach().numpy()))
-            metric.update(correct)
-            acc = metric.accumulate()
-            # probs = F.softmax(logits, axis=1)
-            # correct += np.sum((probs.argmax(axis=1) == labels).numpy() != 0)
-            # data_num += labels.shape[0]
-            # acc = correct / data_num
+        global_step += 1
+        if global_step % 100 == 0:
+            logger.info("global step %d, epoch: %d, batch: %d, loss: %.5f, acc: %.5f" % (
+                global_step, epoch, batch_id, loss, acc))
 
-            global_step += 1
-            if global_step % 100 == 0:
-                logger.info("global step %d, epoch: %d, batch: %d, loss: %.5f, acc: %.5f" % (
-                    global_step, epoch, batch_id, loss, acc))
-
+        if f16 == 'O2':
+            scaled = scaler.scale(loss)
+            scaled.backward()
+            scaler.step(optimizer)
+            scaler.step(lr_scheduler)
+            scaler.update()
+        else:
             loss.backward()
 
             # optimizer.step()
@@ -180,32 +188,32 @@ for epoch in range(1, epochs + 1):
             # optimizer.zero_grad()
 
             optimizer.step()
-            lr_scheduler.step()
+        lr_scheduler.step()
 
-            optimizer.clear_grad()
+        optimizer.clear_grad()
 
-        with paddle.no_grad():
-            model.eval()
-            for data in tqdm(dev_loader, desc=f'epoch {epoch} dev'):
-                input_ids = paddle.to_tensor(data[0])
-                token_type_ids = paddle.to_tensor(data[1])
-                labels = paddle.to_tensor(data[2])
+    with paddle.no_grad():
+        model.eval()
+        for data in tqdm(dev_loader, desc=f'epoch {epoch} dev'):
+            input_ids = paddle.to_tensor(data[0])
+            token_type_ids = paddle.to_tensor(data[1])
+            labels = paddle.to_tensor(data[2])
 
-                # input_ids = torch.tensor(data[0].numpy()).to('cuda')
-                # token_type_ids = torch.tensor(data[1].numpy()).to('cuda')
-                # labels = torch.tensor(data[2].numpy()).to('cuda')
+            # input_ids = torch.tensor(data[0].numpy()).to('cuda')
+            # token_type_ids = torch.tensor(data[1].numpy()).to('cuda')
+            # labels = torch.tensor(data[2].numpy()).to('cuda')
 
-                outputs = model(input_ids=input_ids,
-                                token_type_ids=token_type_ids)
+            outputs = model(input_ids=input_ids,
+                            token_type_ids=token_type_ids)
 
-                # logits = outputs['logits']
-                logits = outputs[0]
+            # logits = outputs['logits']
+            logits = outputs[0]
 
-                probs = F.softmax(logits, axis=-1)
-                correct = metric.compute(probs, labels)
-                metric.update(correct)
-                acc = metric.accumulate()
+            probs = F.softmax(logits, axis=-1)
+            correct = metric.compute(probs, labels)
+            metric.update(correct)
+            acc = metric.accumulate()
 
-            logger.info('dev accuracy ', acc)
+        logger.info('dev accuracy ', acc)
     state_dict = model.state_dict()
     paddle.save(state_dict, f"epoch_{epoch}_model.pdparams")
