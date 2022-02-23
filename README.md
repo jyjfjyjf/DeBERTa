@@ -4,8 +4,7 @@ DeBERTa
 
 **本项目基于PaddlePaddle复现的Deberta，完成情况如下:**
 
-- 在tweetqa和xsum数据集上均达到论文精度
-- 我们复现的ByT5是基于paddlenlp
+- 我们复现的Deberta是基于paddlenlp
 - 我们提供aistudio notebook, 帮助您快速验证模型
 
 **项目参考：**
@@ -25,7 +24,7 @@ DeBERTa
 ## 3 数据集
 我们主要复现MNLI-m/mm数据集的精度, 数据集，
 
-tweetqa数据集可以前往此处下载:
+MNLI数据集可以前往此处下载:
 [地址](https://gluebenchmark.com/tasks)
 
 
@@ -40,7 +39,7 @@ pip install sentencepiece
 
 1. 将转换后的模型放到lib/deberta_large/下面 
 >转换之后的模型链接为https://aistudio.baidu.com/aistudio/datasetdetail/125983
-2. 调整xsum数据集目录：MNLI数据集较大，下载数据集到指定目录data/MNLI/
+2. 调整MNLI数据集目录：MNLI数据集较大，下载数据集到指定目录data/MNLI/
 3. 微调和验证：
    以下是训练以及验证MNLI的train_eval.py
 ```
@@ -49,7 +48,7 @@ python tools/train_eval.py
 
 ## 6 主要代码路径
 1. tokenizer代码
-   byt5tokenizer：paddle_deberta/paddlenlp/tokenization_deberta.py
+   tokenization_deberta：paddle_deberta/paddlenlp/tokenization_deberta.py
 2. 数据集加载：
    tools/my_datasets.py
 3. tools目录中包含微调任务的训练与测试脚本，train_eval.py执行训练验证脚本
