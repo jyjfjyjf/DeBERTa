@@ -41,7 +41,7 @@ def mnli_collate_fn(batch):
     token_type_ids_padded = padding(mcf_token_type_ids, mcf_max_length)
 
     return input_ids_padded, token_type_ids_padded, \
-        paddle.to_tensor(mcf_labels)
+           paddle.to_tensor(mcf_labels)
 
 
 vocab_path = vocab_path
@@ -106,7 +106,11 @@ optimizer = paddle.optimizer.AdamW(
 metric = paddle.metric.Accuracy()
 
 scaler = paddle.amp.GradScaler(init_loss_scaling=1024)
-model, optimizer = paddle.amp.decorate(models=model, optimizers=optimizer, level=f16, master_weight=None, save_dtype=None)
+model, optimizer = paddle.amp.decorate(models=model,
+                                       optimizers=optimizer,
+                                       level=f16,
+                                       master_weight=None,
+                                       save_dtype='float32')
 
 # model.to('cuda')
 
@@ -136,7 +140,11 @@ for epoch in range(1, epochs + 1):
         input_data = {'input_ids': input_ids,
                       'token_type_ids': token_type_ids,
                       'labels': labels}
-        with paddle.amp.auto_cast(enable=True, custom_white_list=None, custom_black_list=None, level=f16):
+        with paddle.amp.auto_cast(enable=True, custom_black_list=[
+            "reduce_sum",
+            "c_softmax_with_cross_entropy",
+            "elementwise_div"
+        ], level=f16):
             outputs = model(**input_data)
 
             # if adv_weight > 0:
@@ -178,7 +186,6 @@ for epoch in range(1, epochs + 1):
             scaled = scaler.scale(loss)
             scaled.backward()
             scaler.step(optimizer)
-            scaler.step(lr_scheduler)
             scaler.update()
         else:
             loss.backward()
